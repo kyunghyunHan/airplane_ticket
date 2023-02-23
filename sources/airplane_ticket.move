@@ -3,6 +3,7 @@ module airline::tickets{
      use std::string::{Self,String};
     use aptos_std::table_with_length::{Self, TableWithLength};
      use std::vector;
+         use aptos_framework::coin;
     const ENO_VENUE: u64 = 0;
     const ENO_TICKETS: u64 = 1;
     const ENO_ENVELOPE: u64 = 2;
@@ -50,7 +51,7 @@ module airline::tickets{
         let airline = borrow_global<Flight>(airline_addr);
         table_with_length::length<AirplaneSeat, Ticket>(&airline.available_tickets)
     }
-    public entry fun create_flight(airline_addr:&signer,seat: vector<u8>,price: u64) acquires Flight{
+    public entry fun create_flight(airline_addr:&signer,price: u64) acquires Flight{
         let airline_addr = signer::address_of(airline_addr);
         assert!(exists<Flight>(airline_addr), ENO_VENUE);
         let current_seat_count = available_ticket_count(airline_addr);
@@ -68,7 +69,24 @@ module airline::tickets{
         table_with_length::add(&mut airline.available_tickets,identifier, tickets)
         }
     }
-    public entry fun buy_ticket(){}
+    public entry fun buy_ticket<CoinType>(buyer:&signer,airline_addr:address,seat: vector<u8>, seat_number: u64) acquires Flight,TicketEnvelope{
+        let buyer_addr= signer::address_of(buyer);
+        let target_seat_id= AirplaneSeat{seat:string::utf8(seat),seat_number};
+        let airline = borrow_global_mut<Flight>(airline_addr);
+         assert!(table_with_length::contains<AirplaneSeat, Ticket>(&airline.available_tickets, target_seat_id), EINVALID_TICKET);
+
+        let target_ticket = table_with_length::borrow<AirplaneSeat, Ticket>(&airline.available_tickets, target_seat_id);
+         coin::transfer<CoinType>(buyer, airline_addr, target_ticket.price);
+        let ticket = table_with_length::remove<AirplaneSeat, Ticket>(&mut airline.available_tickets, target_seat_id);
+
+        if (!exists<TicketEnvelope>(buyer_addr)) {
+        move_to<TicketEnvelope>(buyer, TicketEnvelope { tickets: vector::empty<Ticket>() });
+   
+        let envelope = borrow_global_mut<TicketEnvelope>(buyer_addr);
+        vector::push_back<Ticket>(&mut envelope.tickets, ticket);
+        };
+
+    }
 
 
    #[test(venue_owner = @0x111, buyer = @0x222, x=@airline)]
